@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+/* HELIX Growth Doctor — RTL Hebrew, emerald brand + a real heat scale for the
+   heatmap/cohort visuals. Theme-aware (light/dark). */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --ink: #0e1626; --ink-2: #5a6478; --line: #e2e6ec;
+  --brand: #059669; --brand-ink: #047857; --brand-soft: #05966914;
+  --good: #10b981; --warn: #f59e0b; --crit: #ef4444;
+  --h0: #1e40af; --h1: #0891b2; --h2: #10b981; --h3: #eab308; --h4: #f97316; --h5: #dc2626;
+  --shadow: 0 1px 2px rgba(14,22,38,.04), 0 8px 24px rgba(14,22,38,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0e13; --panel: #121820; --ink: #e9eef4; --ink-2: #8b97a8; --line: #212a35;
+    --brand: #10b981; --brand-ink: #34d399; --brand-soft: #10b98118;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+  }
+}
+html { direction: rtl; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: 'Assistant', 'Rubik', 'Segoe UI', system-ui, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.tnum { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
