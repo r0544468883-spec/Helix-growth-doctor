@@ -21,8 +21,10 @@ export async function GET(req: Request) {
   const entered = funnel[0]?.count || 0;
   const converted = funnel[funnel.length - 1]?.count || 0;
 
+  const conversionRate = entered ? Math.round((converted / entered) * 1000) / 10 : 0;
   const points = [
-    { metric: 'gd_conversion_rate', dims: {}, value: entered ? Math.round((converted / entered) * 1000) / 10 : 0 },
+    { metric: 'gd_conversion_rate', dims: {}, value: conversionRate },
+    { metric: 'gd_overall_dropoff_pct', dims: {}, value: entered ? Math.round((1 - converted / entered) * 1000) / 10 : 0 },
     { metric: 'gd_top_dropoff_pct', dims: { step: worst?.name ?? '' }, value: worst?.dropPct ?? 0 },
     { metric: 'gd_entered', dims: {}, value: entered },
     { metric: 'gd_converted', dims: {}, value: converted },
