@@ -83,6 +83,24 @@ declare new_id uuid; begin
   return new_id;
 end $$;
 
+-- Custom (workspace-uploaded) message templates. A workspace defines its OWN
+-- WhatsApp templates, merged OVER the built-in catalog (a custom row with the same
+-- key overrides the built-in). Backs lib/templates/custom.ts.
+create table if not exists custom_templates (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references workspaces(id) on delete cascade,
+  kind text not null,                         -- 'whatsapp'
+  key text not null,                          -- logical key (overrides a built-in with same key)
+  definition jsonb not null,                  -- the template shape (per kind)
+  active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (workspace_id, kind, key)
+);
+create index if not exists idx_custom_tpl on custom_templates(workspace_id, kind, active);
+
+alter table custom_templates enable row level security;
+
 do $$ begin
   create policy ws_member on workspaces for all using (is_member(id));
   create policy mem_self on memberships for all using (user_id = auth.uid());
@@ -90,4 +108,5 @@ do $$ begin
   create policy fn_member on funnels for all using (is_member(workspace_id));
   create policy conn_member on connections for all using (is_member(workspace_id));
   create policy ins_member on insights for all using (is_member(workspace_id));
+  create policy custom_tpl_member on custom_templates for all using (is_member(workspace_id));
 exception when duplicate_object then null; end $$;
