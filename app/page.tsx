@@ -3,6 +3,7 @@ import { DEMO, funnelFromEvents } from '@/lib/analytics';
 import { diagnose } from '@/lib/doctor';
 import { modelInUse } from '@/lib/ollama';
 import Dashboard from '@/components/Dashboard';
+import WhatsAppLink from '@/components/WhatsAppLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,5 +24,10 @@ export default async function Home() {
   const cohorts = DEMO.cohorts();
   const insights = diagnose(funnel, cohorts);
 
-  return <Dashboard funnel={funnel} cohorts={cohorts} heat={DEMO.heat()} insights={insights} model={modelInUse()} />;
+  return (
+    <>
+      <Dashboard funnel={funnel} cohorts={cohorts} heat={DEMO.heat()} insights={insights} model={modelInUse()} />
+      <WhatsAppLink />
+    </>
+  );
 }
