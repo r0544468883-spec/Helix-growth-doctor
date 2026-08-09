@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { FunnelStage, CohortRow, HeatPoint, Insight } from '@/lib/types';
+import type { AutonomyMode } from '@/lib/autonomy/types';
+import { actOnInsight } from '@/app/actions';
 
 const panel: React.CSSProperties = { background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 18, boxShadow: 'var(--shadow)' };
 const nf = (n: number) => n.toLocaleString('he-IL');
@@ -19,15 +21,19 @@ function retColor(v: number): string {
 const SEV: Record<Insight['severity'], { bg: string; icon: string }> = {
   crit: { bg: '#ef44441a', icon: '🩹' }, warn: { bg: '#f59e0b1a', icon: '📉' }, good: { bg: '#10b9811a', icon: '💰' },
 };
-const ACTION: Record<Insight['action'], string> = { landing: '🖥️ תקן את הדף + הרץ A/B', ab: '🅰️🅱️ הרץ A/B', campaign: '📣 בנה קמפיין', winback: '💬 שלח win-back' };
+const ACTION: Record<Insight['action'], string> = { landing: 'תקן את הדף', ab: 'הרץ A/B', campaign: 'בנה קמפיין', winback: 'שלח win-back' };
+// The CTA verb reflects the workspace's autonomy mode for that action type.
+const MODE_VERB: Record<AutonomyMode, string> = { advisor: '💡 המלץ', approve: '📩 שלח לאישור', autopilot: '🤖 בצע אוטומטית' };
 
-export default function Dashboard({ funnel, cohorts, heat, insights, model }: {
+export default function Dashboard({ funnel, cohorts, heat, insights, model, modes }: {
   funnel: FunnelStage[]; cohorts: CohortRow[]; heat: HeatPoint[]; insights: Insight[]; model: string;
+  modes?: Record<Insight['action'], AutonomyMode>;
 }) {
-  // Hero (Growth Doctor): a diagnosis is worthless without a next step. Clicking a
-  // finding's CTA gives immediate command feedback — the card commits to an action
-  // and promises a measurement window, closing the diagnose → act → measure loop.
-  const [acted, setActed] = useState<Set<number>>(new Set());
+  // A diagnosis is worthless without a next step. The CTA now runs a REAL,
+  // mode-aware action server-side (recommend / enqueue-for-approval / auto-execute)
+  // instead of the previous local-only stub — closing diagnose → act → measure.
+  const [busy, setBusy] = useState<Set<number>>(new Set());
+  const [done, setDone] = useState<Record<number, string>>({});
   const cv = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = cv.current; if (!c) return; const x = c.getContext('2d'); if (!x) return;
@@ -145,22 +151,37 @@ export default function Dashboard({ funnel, cohorts, heat, insights, model }: {
       <SectionLabel>🧠 האבחון של הסוכן — תובנה → פעולה</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {insights.map((ins, i) => {
-          const done = acted.has(i);
+          const outcome = done[i];
+          const isBusy = busy.has(i);
+          const mode = modes?.[ins.action] ?? 'advisor';
+          const run = async () => {
+            setBusy((p) => new Set(p).add(i));
+            try {
+              const res = await actOnInsight(ins);
+              setDone((p) => ({ ...p, [i]: res.error ? `שגיאה: ${res.error}` : res.message }));
+            } catch {
+              setDone((p) => ({ ...p, [i]: 'שגיאה — נסו שוב' }));
+            } finally {
+              setBusy((p) => { const n = new Set(p); n.delete(i); return n; });
+            }
+          };
           return (
-          <div key={i} className="gd-rise" style={{ ...panel, borderRadius: 14, padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start', animationDelay: `${i * 90}ms`, boxShadow: done ? '0 0 0 2px var(--brand)' : 'var(--shadow)', transition: 'box-shadow .25s ease' }}>
+          <div key={i} className="gd-rise" style={{ ...panel, borderRadius: 14, padding: '13px 15px', display: 'flex', gap: 12, alignItems: 'flex-start', animationDelay: `${i * 90}ms`, boxShadow: outcome ? '0 0 0 2px var(--brand)' : 'var(--shadow)', transition: 'box-shadow .25s ease' }}>
             <div style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', fontSize: 17, flex: 'none', background: SEV[ins.severity].bg }}>{SEV[ins.severity].icon}</div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>{ins.title}</div>
               <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{ins.detail}</div>
-              {done ? (
+              {outcome ? (
                 <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--brand)', fontSize: 12.5, fontWeight: 800 }}>
-                  ✓ יצא לדרך · נמדוד את ההשפעה בעוד 7 ימים
+                  ✓ {outcome}
                 </div>
               ) : (
                 <button
-                  onClick={() => setActed((prev) => new Set(prev).add(i))}
-                  style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--brand)', color: '#fff', border: 0, borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}
-                >{ACTION[ins.action]}</button>
+                  onClick={run}
+                  disabled={isBusy}
+                  title={ACTION[ins.action]}
+                  style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--brand)', color: '#fff', border: 0, borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 800, cursor: isBusy ? 'wait' : 'pointer', opacity: isBusy ? .6 : 1, fontFamily: 'inherit' }}
+                >{isBusy ? '…' : `${MODE_VERB[mode]} · ${ACTION[ins.action]}`}</button>
               )}
             </div>
           </div>
