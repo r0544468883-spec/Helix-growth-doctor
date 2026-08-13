@@ -10,6 +10,8 @@ import { resolveMode } from '@/lib/autonomy/resolve';
 import { supabaseStore, recordAction } from '@/lib/autonomy/store';
 import { runAction } from '@/lib/autonomy/guard';
 import { sendWhatsApp, sendTelegram } from '@/lib/channels';
+import { reviewInsight } from '@/lib/agents/growth-doctor/department-chief';
+import type { InsightReview, DiagnosisContext } from '@/lib/agents/growth-doctor/contract';
 
 export const FEATURE_BY_ACTION: Record<Insight['action'], string> = {
   landing: 'gd.edit_landing',
@@ -44,24 +46,47 @@ export type ActOutcome = { mode: AutonomyMode; disposition: 'display' | 'enqueue
 // Route ONE insight through the autonomy switch against a given workspace.
 // `supabase` may be an auth-scoped or admin client — the switch decision is the
 // same either way (resolved server-side by feature_key).
-export async function actInsightCore(supabase: SupabaseClient, ws: string, ins: Insight): Promise<ActOutcome> {
+//
+// opts.ctx (funnel+cohorts) lets the adversarial Critic judge significance before
+// auto-execution; opts.review lets a caller pass a pre-computed review. The Critic
+// gate ONLY narrows autopilot → approve (never widens) — a weak/unsafe diagnosis
+// is held for human approval instead of silently auto-acting.
+export async function actInsightCore(
+  supabase: SupabaseClient,
+  ws: string,
+  ins: Insight,
+  opts?: { ctx?: DiagnosisContext; review?: InsightReview },
+): Promise<ActOutcome> {
   const featureKey = FEATURE_BY_ACTION[ins.action];
   const mode = await resolveMode(supabaseStore(supabase), ws, featureKey);
   const plan = remediationPlan(ins);
   const summary = `${ins.title} → ${plan}`;
 
-  const { disposition } = await runAction(mode, { featureKey, summary, payload: { insight: ins, plan } }, {
+  // Critic gate — runs only when the switch would auto-execute. A non-safe verdict
+  // downgrades autopilot → approve so a human confirms; nothing is auto-applied on
+  // a diagnosis the Critic couldn't stand behind.
+  let effectiveMode = mode;
+  let review: InsightReview | null = opts?.review ?? null;
+  if (mode === 'autopilot') {
+    if (!review) review = await reviewInsight(ins, plan, opts?.ctx);
+    if (!review.safeToAutoExecute) effectiveMode = 'approve';
+  }
+  const heldByCritic = mode === 'autopilot' && effectiveMode === 'approve';
+  const payload = { insight: ins, plan, review };
+
+  const { disposition } = await runAction(effectiveMode, { featureKey, summary, payload }, {
     display: async () => {
       await supabase.from('insights').insert({ workspace_id: ws, axis: ins.axis, severity: ins.severity, title: ins.title, detail: ins.detail, action: ins.action });
     },
     enqueue: async () => {
-      const id = await recordAction(supabase, ws, featureKey, summary, { insight: ins, plan }, 'pending');
-      await notifyOperator(supabase, ws, `🩺 המלצה לאישור:\n${summary}\n\nאשר/דחה בלוח הבקרה.`);
+      const id = await recordAction(supabase, ws, featureKey, summary, payload, 'pending');
+      const held = heldByCritic ? `\n🔎 העורך-המבקר עצר ביצוע אוטומטי: ${review?.note ?? ''}` : '';
+      await notifyOperator(supabase, ws, `🩺 המלצה לאישור:\n${summary}${held}\n\nאשר/דחה בלוח הבקרה.`);
       return id;
     },
     execute: async () => {
       await supabase.from('insights').insert({ workspace_id: ws, axis: ins.axis, severity: ins.severity, title: ins.title, detail: ins.detail, action: ins.action });
-      const id = await recordAction(supabase, ws, featureKey, summary, { insight: ins, plan }, 'executed');
+      const id = await recordAction(supabase, ws, featureKey, summary, payload, 'executed');
       await notifyOperator(supabase, ws, `🤖 בוצע אוטומטית:\n${summary}`);
       return id;
     },
@@ -69,7 +94,9 @@ export async function actInsightCore(supabase: SupabaseClient, ws: string, ins: 
 
   const message =
     disposition === 'display' ? 'נשמר כהמלצה — עברו למצב "מאשר" או "אוטופיילוט" כדי לפעול.'
-    : disposition === 'enqueue' ? 'נשלח לתור אישור + נשלחה התראה למפעיל.'
+    : disposition === 'enqueue' ? (heldByCritic
+        ? 'העורך-המבקר עצר ביצוע אוטומטי (אבחון לא-מובהק/פעולה לא-מתאימה) — נשלח לאישור אדם.'
+        : 'נשלח לתור אישור + נשלחה התראה למפעיל.')
     : 'בוצע אוטומטית + נשלחה התראה.';
   return { mode, disposition, message };
 }

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { Insight } from '@/lib/types';
 import type { AutonomyMode } from '@/lib/autonomy/types';
 import { actInsightCore, type ActOutcome } from '@/lib/autonomy/act-core';
+import { funnelFromEvents, DEMO } from '@/lib/analytics';
 
 // Resolve the logged-in user's workspace the same way the dashboard does
 // (memberships → workspace_id).
@@ -46,7 +47,10 @@ export async function actOnInsight(ins: Insight): Promise<ActOutcome & { error?:
   const { ws, error } = await currentWorkspace();
   if (error || !ws) return { mode: 'advisor', disposition: 'display', message: '', error: error ?? 'no_workspace' };
   const supabase = await createClient();
-  return actInsightCore(supabase, ws, ins);
+  // Data context for the adversarial Critic (gates auto-execution on autopilot).
+  const funnel = (await funnelFromEvents(supabase, ws)) ?? DEMO.funnel();
+  const cohorts = DEMO.cohorts();
+  return actInsightCore(supabase, ws, ins, { ctx: { funnel, cohorts } });
 }
 
 // Set the autonomy mode for one feature. risk_ack is required for outbound/tos

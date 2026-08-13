@@ -39,10 +39,12 @@ export async function POST(req: NextRequest) {
   const results: Array<{ workspaceId: string; insights: number; outcomes: string[] }> = [];
   for (const ws of workspaceIds) {
     const funnel = (await funnelFromEvents(admin, ws)) ?? DEMO.funnel();
-    const insights = diagnose(funnel, DEMO.cohorts());
+    const cohorts = DEMO.cohorts();
+    const insights = diagnose(funnel, cohorts);
     const outcomes: string[] = [];
     for (const ins of insights) {
-      const r = await actInsightCore(admin, ws, ins);
+      // Pass the data context so the adversarial Critic can gate auto-execution.
+      const r = await actInsightCore(admin, ws, ins, { ctx: { funnel, cohorts } });
       outcomes.push(`${ins.action}:${r.disposition}`);
     }
     results.push({ workspaceId: ws, insights: insights.length, outcomes });
