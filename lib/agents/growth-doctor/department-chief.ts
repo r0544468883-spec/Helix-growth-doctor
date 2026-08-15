@@ -8,6 +8,8 @@
 import type { Insight } from '@/lib/types';
 import { analyze } from './roles/analyst';
 import { critique } from './roles/critic';
+import { writeRemediation } from './roles/maker';
+import { reviseRemediation } from './roles/editor';
 import type { InsightReview, DiagnosisContext } from './contract';
 
 // Conservative default when the Critic can't be reached: never auto-execute a CRO
@@ -29,4 +31,27 @@ export async function reviewInsight(
   const brief = ctx ? await analyze(insight, ctx).catch(() => null) : null;
   const review = await critique(insight, plan, brief).catch(() => null);
   return review ?? HELD;
+}
+
+// The full remediation team (§4b): Analyst (Researcher) → Maker (tailored fix, not
+// the generic template) → Critic → Editor (revise once if the fix doesn't fit the
+// root). Returns the improved plan + the review that gates auto-execution.
+export async function composeRemediation(
+  insight: Insight,
+  fallbackPlan: string,
+  ctx?: DiagnosisContext,
+): Promise<{ plan: string; review: InsightReview }> {
+  const brief = ctx ? await analyze(insight, ctx).catch(() => null) : null;
+
+  let plan = await writeRemediation(insight, brief, fallbackPlan).catch(() => fallbackPlan);
+  let review = (await critique(insight, plan, brief).catch(() => null)) ?? HELD;
+
+  if (review.verdict !== 'proceed') {
+    const revised = await reviseRemediation(plan, review.concerns, insight.title).catch(() => null);
+    if (revised) {
+      plan = revised;
+      review = (await critique(insight, plan, brief).catch(() => null)) ?? review;
+    }
+  }
+  return { plan, review };
 }

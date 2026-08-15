@@ -10,7 +10,7 @@ import { resolveMode } from '@/lib/autonomy/resolve';
 import { supabaseStore, recordAction } from '@/lib/autonomy/store';
 import { runAction } from '@/lib/autonomy/guard';
 import { sendWhatsApp, sendTelegram } from '@/lib/channels';
-import { reviewInsight } from '@/lib/agents/growth-doctor/department-chief';
+import { composeRemediation } from '@/lib/agents/growth-doctor/department-chief';
 import type { InsightReview, DiagnosisContext } from '@/lib/agents/growth-doctor/contract';
 
 export const FEATURE_BY_ACTION: Record<Insight['action'], string> = {
@@ -59,18 +59,18 @@ export async function actInsightCore(
 ): Promise<ActOutcome> {
   const featureKey = FEATURE_BY_ACTION[ins.action];
   const mode = await resolveMode(supabaseStore(supabase), ws, featureKey);
-  const plan = remediationPlan(ins);
+
+  // Remediation department (§4b): Analyst (Researcher) → Maker (a tailored fix, not
+  // the generic template) → Critic → Editor. Produces the plan that is shown/queued
+  // AND the review that gates auto-execution.
+  const { plan, review } = opts?.review
+    ? { plan: remediationPlan(ins), review: opts.review }
+    : await composeRemediation(ins, remediationPlan(ins), opts?.ctx);
   const summary = `${ins.title} → ${plan}`;
 
-  // Critic gate — runs only when the switch would auto-execute. A non-safe verdict
-  // downgrades autopilot → approve so a human confirms; nothing is auto-applied on
-  // a diagnosis the Critic couldn't stand behind.
-  let effectiveMode = mode;
-  let review: InsightReview | null = opts?.review ?? null;
-  if (mode === 'autopilot') {
-    if (!review) review = await reviewInsight(ins, plan, opts?.ctx);
-    if (!review.safeToAutoExecute) effectiveMode = 'approve';
-  }
+  // The Critic gate only narrows autopilot → approve — a fix the Critic couldn't
+  // stand behind is held for a human instead of being auto-applied.
+  const effectiveMode = mode === 'autopilot' && !review.safeToAutoExecute ? 'approve' : mode;
   const heldByCritic = mode === 'autopilot' && effectiveMode === 'approve';
   const payload = { insight: ins, plan, review };
 
