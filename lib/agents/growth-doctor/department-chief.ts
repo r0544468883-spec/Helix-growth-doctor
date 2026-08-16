@@ -10,6 +10,7 @@ import { analyze } from './roles/analyst';
 import { critique } from './roles/critic';
 import { writeRemediation } from './roles/maker';
 import { reviseRemediation } from './roles/editor';
+import { designExperiment } from './roles/experimenter';
 import type { InsightReview, DiagnosisContext } from './contract';
 
 // Conservative default when the Critic can't be reached: never auto-execute a CRO
@@ -44,6 +45,13 @@ export async function composeRemediation(
   const brief = ctx ? await analyze(insight, ctx).catch(() => null) : null;
 
   let plan = await writeRemediation(insight, brief, fallbackPlan).catch(() => fallbackPlan);
+
+  // Experimenter: for an A/B action, attach a concrete test design to the plan.
+  if (insight.action === 'ab') {
+    const design = await designExperiment(insight).catch(() => '');
+    if (design) plan = `${plan}\n\nעיצוב ניסוי: ${design}`;
+  }
+
   let review = (await critique(insight, plan, brief).catch(() => null)) ?? HELD;
 
   if (review.verdict !== 'proceed') {
