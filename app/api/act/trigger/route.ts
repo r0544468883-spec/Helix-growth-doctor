@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdmin } from '@/lib/supabase/admin';
 import { funnelFromEvents, DEMO } from '@/lib/analytics';
 import { diagnose } from '@/lib/doctor';
+import { prioritize } from '@/lib/agents/growth-doctor/roles/prioritizer';
 import { actInsightCore } from '@/lib/autonomy/act-core';
 
 export const runtime = 'nodejs';
@@ -41,8 +42,10 @@ export async function POST(req: NextRequest) {
     const funnel = (await funnelFromEvents(admin, ws)) ?? DEMO.funnel();
     const cohorts = DEMO.cohorts();
     const insights = diagnose(funnel, cohorts);
+    // Prioritizer (ICE): act on the highest impact × ease leak first.
+    const ranked = prioritize(insights);
     const outcomes: string[] = [];
-    for (const ins of insights) {
+    for (const { insight: ins } of ranked) {
       // Pass the data context so the adversarial Critic can gate auto-execution.
       const r = await actInsightCore(admin, ws, ins, { ctx: { funnel, cohorts } });
       outcomes.push(`${ins.action}:${r.disposition}`);
