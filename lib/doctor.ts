@@ -1,9 +1,10 @@
 import type { FunnelStage, CohortRow, Insight } from './types';
+import type { FrictionSummary } from './analytics';
 import { narrate } from './ollama';
 
 // The diagnosis engine. Rule-based detection (deterministic, explainable) finds
 // the leak points; the model (Ollama-first) writes the Hebrew recommendation.
-export function diagnose(funnel: FunnelStage[], cohorts: CohortRow[]): Insight[] {
+export function diagnose(funnel: FunnelStage[], cohorts: CohortRow[], friction?: FrictionSummary | null): Insight[] {
   const out: Insight[] = [];
 
   // Conversion: the biggest drop-off step.
@@ -27,6 +28,29 @@ export function diagnose(funnel: FunnelStage[], cohorts: CohortRow[]): Insight[]
       detail: `הקבוצה האחרונה חוזרת פחות — כדאי להפעיל רצף-החזרה (win-back) לנושרים ולבדוק שינויים ב-onboarding.`,
       action: 'winback',
     });
+  }
+
+  // UX friction (from the behavior tag): rage/dead clicks and shallow scroll are
+  // direct, page-level conversion leaks — the highest-signal thing to fix first.
+  if (friction) {
+    const rd = friction.rageClicks + friction.deadClicks;
+    if (rd >= 5) {
+      const worstPage = friction.topFrictionPages[0]?.page;
+      out.push({
+        axis: 'conversion', severity: friction.rageClicks >= 10 ? 'crit' : 'warn',
+        title: `חיכוך UX: ${friction.rageClicks} קליקי-זעם, ${friction.deadClicks} קליקים-מתים`,
+        detail: `משתמשים לוחצים שוב-ושוב או על אלמנטים שנראים לחיצים אך אינם${worstPage ? ` (בעיקר ב-"${worstPage}")` : ''}. זה חיכוך ישיר — הפוך אלמנטים לחיצים באמת, הבהר אפשריות לחיצה, ותקן קישורים שבורים.`,
+        action: 'landing',
+      });
+    }
+    if (friction.avgScrollDepthPct != null && friction.avgScrollDepthPct < 40) {
+      out.push({
+        axis: 'conversion', severity: 'warn',
+        title: `גלילה רדודה (${friction.avgScrollDepthPct}% בממוצע)`,
+        detail: `רוב המבקרים לא מגיעים לחצי העמוד — התוכן/ה-CTA שמתחת מתפספסים. העלה את ההצעה והוכחה חברתית גבוה יותר (above the fold).`,
+        action: 'landing',
+      });
+    }
   }
 
   // Monetization: always surface the "activate existing audience" angle.

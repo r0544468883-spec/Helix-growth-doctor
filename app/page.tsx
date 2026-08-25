@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { DEMO, funnelFromEvents } from '@/lib/analytics';
+import { DEMO, funnelFromEvents, heatFromEvents, frictionFromEvents, type FrictionSummary } from '@/lib/analytics';
 import { diagnose } from '@/lib/doctor';
 import { modelInUse } from '@/lib/ollama';
 import Dashboard from '@/components/Dashboard';
@@ -32,6 +32,8 @@ export default async function Home() {
   const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
 
   let funnel = DEMO.funnel();
+  let heat = DEMO.heat();
+  let friction: FrictionSummary | null = null;
   let ws: string | null = null;
   if (user) {
     const { data: mem } = await supabase.from('memberships').select('workspace_id').eq('user_id', user.id).limit(1).maybeSingle();
@@ -39,10 +41,13 @@ export default async function Home() {
       ws = mem.workspace_id as string;
       const real = await funnelFromEvents(supabase, ws);
       if (real) funnel = real;
+      const realHeat = await heatFromEvents(supabase, ws);
+      if (realHeat && realHeat.length) heat = realHeat;
+      friction = await frictionFromEvents(supabase, ws);
     }
   }
   const cohorts = DEMO.cohorts();
-  const insights = diagnose(funnel, cohorts);
+  const insights = diagnose(funnel, cohorts, friction);
 
   // Resolve the effective autonomy mode per action type so the CTA reflects what
   // will actually happen (recommend / send-for-approval / auto-execute).
@@ -62,7 +67,7 @@ export default async function Home() {
 
   return (
     <>
-      <Dashboard funnel={funnel} cohorts={cohorts} heat={DEMO.heat()} insights={insights} model={modelInUse()} modes={modes} />
+      <Dashboard funnel={funnel} cohorts={cohorts} heat={heat} insights={insights} model={modelInUse()} modes={modes} />
 
       <section style={{ maxWidth: 1140, margin: '0 auto', padding: '0 clamp(16px,3vw,40px) 40px' }}>
         <h2 style={{ fontSize: 13, fontWeight: 800, letterSpacing: '.02em', color: 'var(--ink-2)', margin: '4px 2px 12px', textTransform: 'uppercase' }}>

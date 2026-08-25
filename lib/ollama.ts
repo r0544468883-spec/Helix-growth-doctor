@@ -1,6 +1,8 @@
 // Model Router — Ollama first (local, private — the CRO agent runs on the
 // business's own data), Claude fallback for quality. Same pattern as the rest of
 // the HELIX ecosystem.
+import { clean } from '@/lib/clean-text';
+
 type Msg = { role: 'user' | 'system'; content: string };
 
 async function askOllama(messages: Msg[]): Promise<string | null> {
@@ -34,7 +36,8 @@ async function askClaude(messages: Msg[]): Promise<string | null> {
 }
 
 export async function narrate(messages: Msg[]): Promise<string> {
-  return (await askOllama(messages)) ?? (await askClaude(messages)) ?? '';
+  // Sole choke point for generated LLM prose — strip invisible/watermark chars.
+  return clean((await askOllama(messages)) ?? (await askClaude(messages)) ?? '');
 }
 export function modelInUse(): 'ollama' | 'claude' | 'none' {
   if (process.env.OLLAMA_BASE_URL) return 'ollama';

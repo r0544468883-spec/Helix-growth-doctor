@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import HelixCommandBar from '@/components/HelixCommandBar';
 
 export const metadata: Metadata = {
   title: 'HELIX Growth Doctor',
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl">
-      <body>{children}</body>
+      <body>
+        {children}
+        <HelixCommandBar />
+      </body>
     </html>
   );
 }
