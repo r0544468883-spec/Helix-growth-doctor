@@ -3,6 +3,7 @@
 // upload / edit / delete your OWN. A custom entry with the same key OVERRIDES the
 // built-in. Talks to /api/templates/{list,custom}. Theme-aware via globals.css vars.
 import { useCallback, useEffect, useState } from 'react';
+import { useFlip } from '@/lib/motion';
 
 type WaItem = {
   key: string; name: string; language: string; category: string; body: string;
@@ -37,6 +38,9 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<Status>(null);
   const [editor, setEditor] = useState<null | { data: EditData; isNew: boolean }>(null);
+  // FLIP: when a row is deleted or an override changes the order, the remaining
+  // rows FLOW to their new positions (Apple spatial consistency) instead of jumping.
+  const listRef = useFlip<HTMLDivElement>([wa]);
 
   const flash = (kind: 'ok' | 'err', msg: string) => {
     setStatus({ kind, msg });
@@ -135,10 +139,11 @@ export default function TemplatesPage() {
             אין תבניות עדיין. הוסף תבנית ראשונה.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div ref={listRef} style={{ display: 'grid', gap: 10 }}>
             {wa.map((i) => (
               <Row
                 key={i.key}
+                flipId={i.key}
                 title={i.name}
                 sub={i.body}
                 badges={[
@@ -224,11 +229,11 @@ export default function TemplatesPage() {
   );
 }
 
-function Row({ title, sub, badges, onEdit, onDelete, editLabel }: {
-  title: string; sub: string; badges: React.ReactNode[]; onEdit: () => void; onDelete?: () => void; editLabel: string;
+function Row({ title, sub, badges, onEdit, onDelete, editLabel, flipId }: {
+  title: string; sub: string; badges: React.ReactNode[]; onEdit: () => void; onDelete?: () => void; editLabel: string; flipId: string;
 }) {
   return (
-    <div style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', boxShadow: 'var(--shadow)' }}>
+    <div data-flip-id={flipId} style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', boxShadow: 'var(--shadow)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' }}>
           <strong style={{ fontSize: 14 }}>{title}</strong>
