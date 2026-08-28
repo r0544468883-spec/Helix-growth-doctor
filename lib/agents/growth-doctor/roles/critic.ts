@@ -7,6 +7,7 @@ import { narrate } from '@/lib/ollama';
 import type { Insight } from '@/lib/types';
 import type { DiagnosisBrief, InsightReview } from '../contract';
 import { parseJson } from '../json';
+import { withSkills } from '../../../skills/registry';
 
 export async function critique(
   insight: Insight,
@@ -30,7 +31,7 @@ verdict: "reject" (אבחון לא-מובהק / פעולה שגויה), "review"
   const user = `אבחון: ${insight.title}\n${insight.detail}\nפעולה מוצעת: ${plan}\n\n${briefStr}`;
 
   const raw = await narrate([
-    { role: 'system', content: system },
+    { role: 'system', content: withSkills(system, ['cro-conversion']) },
     { role: 'user', content: user },
   ]);
   return parseJson<InsightReview>(raw);

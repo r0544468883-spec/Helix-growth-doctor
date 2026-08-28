@@ -6,6 +6,7 @@ import { narrate } from '@/lib/ollama';
 import type { Insight } from '@/lib/types';
 import type { DiagnosisBrief, DiagnosisContext } from '../contract';
 import { parseJson } from '../json';
+import { withSkills } from '../../../skills/registry';
 
 export async function analyze(insight: Insight, ctx: DiagnosisContext): Promise<DiagnosisBrief | null> {
   const funnelStr = ctx.funnel.map((s) => `${s.name}: ${s.count} (נשירה ${s.dropPct}%)`).join('; ');
@@ -22,7 +23,7 @@ export async function analyze(insight: Insight, ctx: DiagnosisContext): Promise<
   const user = `אבחון: ${insight.title}\n${insight.detail}\n\nמשפך (נפחים): ${funnelStr}\nקוהורטות שימור: ${cohortStr}`;
 
   const raw = await narrate([
-    { role: 'system', content: system },
+    { role: 'system', content: withSkills(system, ['cro-conversion', 'finance-metrics']) },
     { role: 'user', content: user },
   ]);
   return parseJson<DiagnosisBrief>(raw);

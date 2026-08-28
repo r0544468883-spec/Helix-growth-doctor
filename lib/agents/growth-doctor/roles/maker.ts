@@ -4,6 +4,7 @@
 import { narrate } from '../../../ollama';
 import type { Insight } from '@/lib/types';
 import type { DiagnosisBrief } from '../contract';
+import { withSkills } from '../../../skills/registry';
 
 export async function writeRemediation(
   insight: Insight,
@@ -16,8 +17,10 @@ export async function writeRemediation(
   const text = await narrate([
     {
       role: 'system',
-      content:
+      content: withSkills(
         'אתה יועץ CRO. כתוב המלצת-תיקון אחת קונקרטית וממוקדת לאבחון (2-4 משפטים): מה בדיוק לעשות ולמה זה מטפל בשורש. התבסס רק על הנתון שקיבלת, בלי הבטחות מספריות מומצאות.',
+        ['cro-conversion', 'helix-brand-voice'],
+      ),
     },
     {
       role: 'user',

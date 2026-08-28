@@ -2,6 +2,7 @@
 // Critic's concerns (action doesn't fit the root, over-reach, weak significance),
 // keeping it concrete and grounded. draft → critique → revise.
 import { narrate } from '../../../ollama';
+import { withSkills } from '../../../skills/registry';
 
 export async function reviseRemediation(
   plan: string,
@@ -11,8 +12,10 @@ export async function reviseRemediation(
   const text = await narrate([
     {
       role: 'system',
-      content:
+      content: withSkills(
         'אתה עורך המלצות CRO. שכתב את ההמלצה כך שתטפל בהערות המבקר ותהיה קונקרטית, ישימה ומדויקת לשורש הבעיה. 2-4 משפטים, בלי הבטחות מומצאות. החזר אך ורק את ההמלצה המתוקנת.',
+        ['cro-conversion', 'helix-brand-voice'],
+      ),
     },
     {
       role: 'user',
